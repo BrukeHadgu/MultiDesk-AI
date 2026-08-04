@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="MultiDesk.Api/MultiDesk.Api.csproj" />
+  <Project Path="MultiDesk.Application/MultiDesk.Application.csproj" />
+  <Project Path="MultiDesk.Domain/MultiDesk.Domain.csproj" />
+  <Project Path="MultiDesk.Infrastructure/MultiDesk.Infrastructure.csproj" />
+</Solution>
