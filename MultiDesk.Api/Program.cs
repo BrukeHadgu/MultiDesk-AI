@@ -11,17 +11,26 @@ builder.Services.AddEndpointsApiExplorer();
 
 // Database
 builder.Services.AddDbContext<MultiDeskDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("MultiDeskDatabase")));
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("MultiDeskDatabase")));
 
-// Repository pattern — scoped matches DbContext lifetime
+// Repository pattern
 builder.Services.AddScoped<ITicketRepository, TicketRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IDepartmentRepository, DepartmentRepository>();
-
-// Unit of Work
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
+// Seeder
+builder.Services.AddScoped<MultiDeskSeeder>();
+
 var app = builder.Build();
+
+// Run seeder on startup
+using (var scope = app.Services.CreateScope())
+{
+    var seeder = scope.ServiceProvider.GetRequiredService<MultiDeskSeeder>();
+    await seeder.SeedAsync();
+}
 
 app.UseHttpsRedirection();
 app.MapControllers();
