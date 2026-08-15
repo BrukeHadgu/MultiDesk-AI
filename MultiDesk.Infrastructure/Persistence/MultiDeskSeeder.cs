@@ -23,7 +23,7 @@ public class MultiDeskSeeder(
 
         logger.LogInformation("Seeding database...");
 
-        // ── 1. Tenant ──────────────────────────────────────────────
+        // tenat
         var tenant = new Tenant
         {
             Name      = "CoTBE University",
@@ -37,7 +37,7 @@ public class MultiDeskSeeder(
 
         logger.LogInformation("Tenant created: {TenantName}", tenant.Name);
 
-        // ── 2. Departments ─────────────────────────────────────────
+        // departments
         var departments = new List<Department>
         {
             new() { Name = "IT Helpdesk",      Description = "Technical support for hardware, software, and network issues.",  TenantId = tenant.Id },
@@ -51,7 +51,7 @@ public class MultiDeskSeeder(
 
         logger.LogInformation("Departments seeded: {Count}", departments.Count);
 
-        // ── 3. Categories (2 per department) ───────────────────────
+        // categories two per department
         var categories = new List<Category>
         {
             // IT Helpdesk
@@ -76,7 +76,7 @@ public class MultiDeskSeeder(
 
         logger.LogInformation("Categories seeded: {Count}", categories.Count);
 
-        // ── 4. Users ───────────────────────────────────────────────
+        // users
         var users = new List<User>
         {
             // Admin
@@ -124,7 +124,7 @@ public class MultiDeskSeeder(
 
         logger.LogInformation("Users seeded: {Count}", users.Count);
 
-        // ── 5. Sample Ticket ───────────────────────────────────────
+        // sample ticket
         var sampleTicket = new Ticket
         {
             Title        = "Cannot access student portal",
@@ -143,7 +143,7 @@ public class MultiDeskSeeder(
         context.Tickets.Add(sampleTicket);
         await context.SaveChangesAsync(ct);
 
-        // ── 6. Sample Message on the Ticket ───────────────────────
+        // sample message
         var sampleMessage = new Message
         {
             Content  = "Hello Liya, I have received your ticket. Can you please tell me which browser you are using and what error message appears?",
@@ -157,7 +157,7 @@ public class MultiDeskSeeder(
         context.Messages.Add(sampleMessage);
         await context.SaveChangesAsync(ct);
 
-        // ── 7. Sample AI Suggestions ───────────────────────────────
+        // sample AI suggestions for the ticket
         var suggestions = new List<AiSuggestion>
         {
             new()
