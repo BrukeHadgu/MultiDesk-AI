@@ -3,16 +3,10 @@ using Microsoft.AspNetCore.OpenApi;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using MultiDesk.Api.ExceptionHandlers;
 using MultiDesk.Application.Common;
 using MultiDesk.Application.Interfaces;
-using MultiDesk.Application.Validators;
 using MultiDesk.Infrastructure.Persistence;
 using MultiDesk.Infrastructure.Persistence.Repositories;
-using MultiDesk.Infrastructure.Services;
-using Scalar.AspNetCore;
-using MultiDesk.Application.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,7 +15,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
 
-// db context configuration
+// Database
 builder.Services.AddDbContext<MultiDeskDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("MultiDeskDatabase")));
@@ -88,6 +82,14 @@ builder.Services.AddCors(options =>
               .AllowAnyHeader()
               .AllowAnyMethod());
 });
+
+// Repository pattern — scoped matches DbContext lifetime
+builder.Services.AddScoped<ITicketRepository, TicketRepository>();
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IDepartmentRepository, DepartmentRepository>();
+
+// Unit of Work
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 var app = builder.Build();
 
