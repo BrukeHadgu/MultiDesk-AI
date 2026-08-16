@@ -15,6 +15,9 @@ public class User
     public DateTime? DeletedAt { get; set; }
     public int TenantId { get; set; } = 1;
     public int? DepartmentId { get; set; }
+    // Refresh token fields
+    public string? RefreshToken { get; set; }
+    public DateTime? RefreshTokenExpiry { get; set; }
 
     public Tenant Tenant { get; set; } = null!;
     public Department? Department { get; set; }
