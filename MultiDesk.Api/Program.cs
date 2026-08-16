@@ -12,6 +12,7 @@ using MultiDesk.Infrastructure.Persistence;
 using MultiDesk.Infrastructure.Persistence.Repositories;
 using MultiDesk.Infrastructure.Services;
 using Scalar.AspNetCore;
+using MultiDesk.Application.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,6 +35,13 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 // authentication and authorization services
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+
+// application services
+builder.Services.AddScoped<ITicketService, TicketService>();
+builder.Services.AddScoped<IDepartmentService, DepartmentService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IMessageService, MessageService>();
+builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 
 // seed data service
 builder.Services.AddScoped<MultiDeskSeeder>();
