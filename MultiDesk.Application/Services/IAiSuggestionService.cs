@@ -12,7 +12,7 @@ public interface IAiSuggestionService
     // agent accepts a suggestion, which will be added to the ticket's messages and marked as accepted
     Task<AiSuggestionResponse> AcceptSuggestionAsync(
         int suggestionId,
-        int agentId,
+        string agentId,
         int tenantId,
         CancellationToken ct = default);
 

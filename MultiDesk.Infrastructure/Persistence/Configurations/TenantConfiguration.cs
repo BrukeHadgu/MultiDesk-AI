@@ -21,11 +21,6 @@ public class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.HasIndex(t => t.Subdomain)
             .IsUnique();
 
-        builder.HasMany(t => t.Users)
-            .WithOne(u => u.Tenant)
-            .HasForeignKey(u => u.TenantId)
-            .OnDelete(DeleteBehavior.Restrict);
-
         builder.HasMany(t => t.Departments)
             .WithOne(d => d.Tenant)
             .HasForeignKey(d => d.TenantId)

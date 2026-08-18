@@ -3,10 +3,14 @@ using MultiDesk.Application.DTOs.Analytics;
 using MultiDesk.Application.Services;
 using MultiDesk.Domain.Enums;
 using MultiDesk.Infrastructure.Persistence;
+using MultiDesk.Infrastructure.Identity;
+using Microsoft.AspNetCore.Identity;
 
 namespace MultiDesk.Infrastructure.Services;
 
-public class AnalyticsService(MultiDeskDbContext context) : IAnalyticsService
+public class AnalyticsService(
+    MultiDeskDbContext context,
+    UserManager<MultiDeskUser> userManager) : IAnalyticsService
 {
     public async Task<DashboardAnalyticsResponse> GetDashboardAsync(
         int tenantId, CancellationToken ct = default)
@@ -51,21 +55,32 @@ public class AnalyticsService(MultiDeskDbContext context) : IAnalyticsService
             .ToListAsync(ct);
 
         // Agent workloads
-        var agentWorkloads = await context.Users
-            .AsNoTracking()
-            .Where(u => u.TenantId == tenantId
-                     && u.Role == Domain.Enums.UserRole.Agent
-                     && u.IsActive)
-            .Select(u => new AgentWorkload(
-                u.FirstName + " " + u.LastName,
-                u.AssignedTickets.Count(t =>
-                    t.Status == TicketStatus.Open ||
-                    t.Status == TicketStatus.InProgress),
-                u.AssignedTickets.Count(t =>
-                    t.Status == TicketStatus.Resolved &&
-                    t.ResolvedAt != null &&
-                    t.ResolvedAt.Value.Date == DateTime.UtcNow.Date)))
-            .ToListAsync(ct);
+        // Replace the agent workload section with this
+        var agentRole = "Agent";
+        var agentsInRole = await userManager.GetUsersInRoleAsync(agentRole);
+        var agentIds = agentsInRole
+            .Where(u => u.TenantId == tenantId && u.IsActive)
+            .Select(u => u.Id)
+            .ToList();
+
+        var agentWorkloads = new List<AgentWorkload>();
+        foreach (var agentId in agentIds)
+        {
+            var agent = agentsInRole.First(u => u.Id == agentId);
+            var assigned = await context.Tickets.CountAsync(t =>
+                t.AgentId == agentId &&
+                (t.Status == TicketStatus.Open ||
+                 t.Status == TicketStatus.InProgress), ct);
+
+            var resolvedToday = await context.Tickets.CountAsync(t =>
+                t.AgentId == agentId &&
+                t.Status == TicketStatus.Resolved &&
+                t.ResolvedAt != null &&
+                t.ResolvedAt.Value.Date == DateTime.UtcNow.Date, ct);
+
+            agentWorkloads.Add(new AgentWorkload(
+                agent.FullName, assigned, resolvedToday));
+        }
 
         // Daily ticket volume (last 7 days)
         var sevenDaysAgo = DateTime.UtcNow.AddDays(-7).Date;

@@ -31,17 +31,13 @@ public class TicketConfiguration : IEntityTypeConfiguration<Ticket>
         builder.Property(t => t.AttachmentPath)
             .HasMaxLength(500);
 
-        // Student submitted the ticket
-        builder.HasOne(t => t.Student)
-            .WithMany(u => u.SubmittedTickets)
-            .HasForeignKey(t => t.StudentId)
-            .OnDelete(DeleteBehavior.Restrict);
+        // StudentId and AgentId are string FKs pointing to AspNetUsers
+        builder.Property(t => t.StudentId)
+            .IsRequired()
+            .HasMaxLength(450);
 
-        // Agent assigned (nullable)
-        builder.HasOne(t => t.Agent)
-            .WithMany(u => u.AssignedTickets)
-            .HasForeignKey(t => t.AgentId)
-            .OnDelete(DeleteBehavior.SetNull);
+        builder.Property(t => t.AgentId)
+            .HasMaxLength(450);
 
         // Department
         builder.HasOne(t => t.Department)
@@ -55,7 +51,7 @@ public class TicketConfiguration : IEntityTypeConfiguration<Ticket>
             .HasForeignKey(t => t.CategoryId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Composite indexes for common query patterns
+        // Composite indexes
         builder.HasIndex(t => new { t.TenantId, t.Status, t.CreatedAt })
             .HasDatabaseName("IX_Tickets_TenantId_Status_CreatedAt");
 
@@ -68,7 +64,6 @@ public class TicketConfiguration : IEntityTypeConfiguration<Ticket>
         builder.HasIndex(t => t.TenantId)
             .HasDatabaseName("IX_Tickets_TenantId");
 
-        // Soft delete filter
         builder.HasQueryFilter(t => !t.IsDeleted);
     }
 }

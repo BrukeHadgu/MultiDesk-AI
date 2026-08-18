@@ -15,6 +15,6 @@ public record UpdateTicketRequest
 
     public TicketPriority? Priority { get; init; }
 
-    // Agent assignment — admin/agent only
-    public int? AgentId { get; init; }
+    // Agent ID is now string (Identity GUID)
+    public string? AgentId { get; init; }
 }

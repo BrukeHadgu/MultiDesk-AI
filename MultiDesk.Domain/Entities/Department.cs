@@ -13,6 +13,5 @@ public class Department
 
     public Tenant Tenant { get; set; } = null!;
     public ICollection<Category> Categories { get; set; } = new List<Category>();
-    public ICollection<User> Agents { get; set; } = new List<User>();
     public ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();
 }

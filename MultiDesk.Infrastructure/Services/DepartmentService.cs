@@ -1,42 +1,67 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MultiDesk.Application.DTOs.Departments;
 using MultiDesk.Application.Services;
 using MultiDesk.Domain.Entities;
+using MultiDesk.Infrastructure.Identity;
 using MultiDesk.Infrastructure.Persistence;
 
 namespace MultiDesk.Infrastructure.Services;
 
-public class DepartmentService(MultiDeskDbContext context) : IDepartmentService
+public class DepartmentService(
+    MultiDeskDbContext context,
+    UserManager<MultiDeskUser> userManager) : IDepartmentService
 {
     public async Task<IReadOnlyList<DepartmentResponse>> GetAllAsync(
-        int tenantId, CancellationToken ct = default) =>
-        await context.Departments
+        int tenantId, CancellationToken ct = default)
+    {
+        var departments = await context.Departments
             .AsNoTracking()
             .Where(d => d.TenantId == tenantId && d.IsActive)
-            .Select(d => new DepartmentResponse(
-                d.Id,
-                d.Name,
-                d.Description,
-                d.IsActive,
-                d.Agents.Count(a => a.IsActive),
-                d.Tickets.Count(t => t.Status == Domain.Enums.TicketStatus.Open)))
+            .Include(d => d.Tickets)
             .OrderBy(d => d.Name)
             .ToListAsync(ct);
 
+        // Count agents per department from Identity users
+        var agentsInRole = await userManager.GetUsersInRoleAsync("Agent");
+
+        return departments.Select(d => new DepartmentResponse(
+            d.Id,
+            d.Name,
+            d.Description,
+            d.IsActive,
+            agentsInRole.Count(a => a.TenantId == tenantId
+                                 && a.Department == d.Name
+                                 && a.IsActive),
+            d.Tickets.Count(t => t.Status == Domain.Enums.TicketStatus.Open)))
+        .ToList();
+    }
+
     public async Task<DepartmentResponse?> GetByIdAsync(
         int departmentId, int tenantId,
-        CancellationToken ct = default) =>
-        await context.Departments
+        CancellationToken ct = default)
+    {
+        var d = await context.Departments
             .AsNoTracking()
             .Where(d => d.Id == departmentId && d.TenantId == tenantId)
-            .Select(d => new DepartmentResponse(
-                d.Id,
-                d.Name,
-                d.Description,
-                d.IsActive,
-                d.Agents.Count(a => a.IsActive),
-                d.Tickets.Count(t => t.Status == Domain.Enums.TicketStatus.Open)))
+            .Include(d => d.Tickets)
             .FirstOrDefaultAsync(ct);
+
+        if (d is null) return null;
+
+        var agentsInRole = await userManager.GetUsersInRoleAsync("Agent");
+        var agentCount = agentsInRole.Count(a => a.TenantId == tenantId
+                                                 && a.Department == d.Name
+                                                 && a.IsActive);
+
+        return new DepartmentResponse(
+            d.Id,
+            d.Name,
+            d.Description,
+            d.IsActive,
+            agentCount,
+            d.Tickets.Count(t => t.Status == Domain.Enums.TicketStatus.Open));
+    }
 
     public async Task<DepartmentResponse> CreateAsync(
         CreateDepartmentRequest request, int tenantId,
@@ -44,12 +69,12 @@ public class DepartmentService(MultiDeskDbContext context) : IDepartmentService
     {
         var department = new Department
         {
-            Name        = request.Name,
+            Name = request.Name,
             Description = request.Description,
-            TenantId    = tenantId,
-            IsActive    = true,
-            CreatedAt   = DateTime.UtcNow,
-            UpdatedAt   = DateTime.UtcNow
+            TenantId = tenantId,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
         };
 
         context.Departments.Add(department);

@@ -19,7 +19,7 @@ public interface ITicketService
 
     Task<TicketResponse> CreateAsync(
         CreateTicketRequest request,
-        int studentId,
+        string studentId,
         int tenantId,
         CancellationToken ct = default);
 
@@ -32,12 +32,12 @@ public interface ITicketService
     Task DeleteAsync(
         int ticketId,
         int tenantId,
-        int deletedBy,
+        string deletedBy,
         CancellationToken ct = default);
 
     Task<TicketResponse> AssignAgentAsync(
         int ticketId,
-        int agentId,
+        string agentId,
         int tenantId,
         CancellationToken ct = default);
 

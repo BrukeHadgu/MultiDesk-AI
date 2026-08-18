@@ -5,14 +5,13 @@ namespace MultiDesk.Application.Services;
 public interface IMessageService
 {
     Task<IReadOnlyList<MessageResponse>> GetByTicketAsync(
-        int ticketId,
-        int tenantId,
+        int ticketId, int tenantId,
         CancellationToken ct = default);
 
     Task<MessageResponse> CreateAsync(
         int ticketId,
         CreateMessageRequest request,
-        int senderId,
+        string senderId,      // string now
         int tenantId,
         CancellationToken ct = default);
 }

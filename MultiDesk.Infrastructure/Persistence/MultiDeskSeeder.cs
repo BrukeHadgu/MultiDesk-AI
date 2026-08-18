@@ -1,20 +1,22 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using MultiDesk.Domain.Entities;
 using MultiDesk.Domain.Enums;
+using MultiDesk.Infrastructure.Identity;
 
 namespace MultiDesk.Infrastructure.Persistence;
 
 public class MultiDeskSeeder(
     MultiDeskDbContext context,
+    UserManager<MultiDeskUser> userManager,
+    RoleManager<IdentityRole> roleManager,
     ILogger<MultiDeskSeeder> logger)
 {
     public async Task SeedAsync(CancellationToken ct = default)
     {
-        // Apply any pending migrations first
         await context.Database.MigrateAsync(ct);
 
-        // Only seed if database is empty
         if (await context.Tenants.AnyAsync(ct))
         {
             logger.LogInformation("Database already seeded. Skipping.");
@@ -23,173 +25,133 @@ public class MultiDeskSeeder(
 
         logger.LogInformation("Seeding database...");
 
-        // tenat
+        // ── 1. Tenant ──────────────────────────────────────────────
         var tenant = new Tenant
         {
-            Name      = "CoTBE University",
+            Name = "CoTBE University",
             Subdomain = "cotbe",
-            IsActive  = true,
+            IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
-
         context.Tenants.Add(tenant);
         await context.SaveChangesAsync(ct);
 
-        logger.LogInformation("Tenant created: {TenantName}", tenant.Name);
-
-        // departments
+        // ── 2. Departments ─────────────────────────────────────────
         var departments = new List<Department>
         {
-            new() { Name = "IT Helpdesk",      Description = "Technical support for hardware, software, and network issues.",  TenantId = tenant.Id },
-            new() { Name = "Enrollment Office", Description = "Support for registration, course enrollment, and academic records.", TenantId = tenant.Id },
-            new() { Name = "Library",           Description = "Library resources, book reservations, and research support.",  TenantId = tenant.Id },
-            new() { Name = "Thesis Office",     Description = "Thesis submission, supervision, and defense coordination.",    TenantId = tenant.Id }
+            new() { Name = "IT Helpdesk",       Description = "Technical support.", TenantId = tenant.Id },
+            new() { Name = "Enrollment Office",  Description = "Registration support.", TenantId = tenant.Id },
+            new() { Name = "Library",            Description = "Library resources.", TenantId = tenant.Id },
+            new() { Name = "Thesis Office",      Description = "Thesis coordination.", TenantId = tenant.Id }
         };
-
         context.Departments.AddRange(departments);
         await context.SaveChangesAsync(ct);
 
-        logger.LogInformation("Departments seeded: {Count}", departments.Count);
-
-        // categories two per department
+        // ── 3. Categories ──────────────────────────────────────────
         var categories = new List<Category>
         {
-            // IT Helpdesk
-            new() { Name = "Password Reset",     Description = "Account and password recovery.",          DepartmentId = departments[0].Id, TenantId = tenant.Id },
-            new() { Name = "Software Issue",     Description = "Problems with university software tools.", DepartmentId = departments[0].Id, TenantId = tenant.Id },
-
-            // Enrollment Office
-            new() { Name = "Course Registration", Description = "Help with adding or dropping courses.",   DepartmentId = departments[1].Id, TenantId = tenant.Id },
-            new() { Name = "Transcript Request",  Description = "Official academic transcript requests.",  DepartmentId = departments[1].Id, TenantId = tenant.Id },
-
-            // Library
-            new() { Name = "Book Reservation",   Description = "Reserve physical or digital library books.", DepartmentId = departments[2].Id, TenantId = tenant.Id },
-            new() { Name = "Research Support",   Description = "Help finding academic sources and databases.", DepartmentId = departments[2].Id, TenantId = tenant.Id },
-
-            // Thesis Office
-            new() { Name = "Thesis Submission",  Description = "Submit thesis drafts and final documents.", DepartmentId = departments[3].Id, TenantId = tenant.Id },
-            new() { Name = "Defense Scheduling", Description = "Schedule and coordinate thesis defense.",   DepartmentId = departments[3].Id, TenantId = tenant.Id }
+            new() { Name = "Password Reset",      DepartmentId = departments[0].Id, TenantId = tenant.Id },
+            new() { Name = "Software Issue",      DepartmentId = departments[0].Id, TenantId = tenant.Id },
+            new() { Name = "Course Registration", DepartmentId = departments[1].Id, TenantId = tenant.Id },
+            new() { Name = "Transcript Request",  DepartmentId = departments[1].Id, TenantId = tenant.Id },
+            new() { Name = "Book Reservation",    DepartmentId = departments[2].Id, TenantId = tenant.Id },
+            new() { Name = "Research Support",    DepartmentId = departments[2].Id, TenantId = tenant.Id },
+            new() { Name = "Thesis Submission",   DepartmentId = departments[3].Id, TenantId = tenant.Id },
+            new() { Name = "Defense Scheduling",  DepartmentId = departments[3].Id, TenantId = tenant.Id }
         };
-
         context.Categories.AddRange(categories);
         await context.SaveChangesAsync(ct);
 
-        logger.LogInformation("Categories seeded: {Count}", categories.Count);
-
-        // users
-        var users = new List<User>
+        // ── 4. Roles ───────────────────────────────────────────────
+        foreach (var role in new[] { "Admin", "Agent", "Student" })
         {
-            // Admin
-            new()
-            {
-                Email        = "admin@cotbe.edu",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@123"),
-                FirstName    = "System",
-                LastName     = "Admin",
-                Role         = UserRole.Admin,
-                IsActive     = true,
-                TenantId     = tenant.Id,
-                DepartmentId = null
-            },
+            if (!await roleManager.RoleExistsAsync(role))
+                await roleManager.CreateAsync(new IdentityRole(role));
+        }
 
-            // Agent — assigned to IT Helpdesk
-            new()
-            {
-                Email        = "agent@cotbe.edu",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("Agent@123"),
-                FirstName    = "Dawit",
-                LastName     = "Bekele",
-                Role         = UserRole.Agent,
-                IsActive     = true,
-                TenantId     = tenant.Id,
-                DepartmentId = departments[0].Id   // IT Helpdesk
-            },
-
-            // Student
-            new()
-            {
-                Email        = "student@cotbe.edu",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("Student@123"),
-                FirstName    = "Liya",
-                LastName     = "Kebede",
-                Role         = UserRole.Student,
-                IsActive     = true,
-                TenantId     = tenant.Id,
-                DepartmentId = null
-            }
+        // ── 5. Seed Users via UserManager ──────────────────────────
+        var adminUser = new MultiDeskUser
+        {
+            UserName = "admin@cotbe.edu",
+            Email = "admin@cotbe.edu",
+            FirstName = "System",
+            LastName = "Admin",
+            TenantId = tenant.Id,
+            IsActive = true,
+            EmailConfirmed = true
         };
+        await userManager.CreateAsync(adminUser, "Admin@12345678!");
+        await userManager.AddToRoleAsync(adminUser, "Admin");
 
-        context.Users.AddRange(users);
-        await context.SaveChangesAsync(ct);
+        var agentUser = new MultiDeskUser
+        {
+            UserName = "agent@cotbe.edu",
+            Email = "agent@cotbe.edu",
+            FirstName = "Dawit",
+            LastName = "Bekele",
+            Department = "IT Helpdesk",
+            TenantId = tenant.Id,
+            IsActive = true,
+            EmailConfirmed = true
+        };
+        await userManager.CreateAsync(agentUser, "Agent@12345678!");
+        await userManager.AddToRoleAsync(agentUser, "Agent");
 
-        logger.LogInformation("Users seeded: {Count}", users.Count);
+        var studentUser = new MultiDeskUser
+        {
+            UserName = "student@cotbe.edu",
+            Email = "student@cotbe.edu",
+            FirstName = "Liya",
+            LastName = "Kebede",
+            TenantId = tenant.Id,
+            IsActive = true,
+            EmailConfirmed = true
+        };
+        await userManager.CreateAsync(studentUser, "Student@12345678!");
+        await userManager.AddToRoleAsync(studentUser, "Student");
 
-        // sample ticket
+        logger.LogInformation("Users seeded with Identity.");
+
+        // ── 6. Sample Ticket ───────────────────────────────────────
         var sampleTicket = new Ticket
         {
-            Title        = "Cannot access student portal",
-            Description  = "I have been trying to log in to the student portal for two days but keep getting an error. My student ID is LK-2024-001.",
-            Status       = TicketStatus.Open,
-            Priority     = TicketPriority.High,
-            StudentId    = users[2].Id,     // Liya
-            AgentId      = users[1].Id,     // Dawit
+            Title = "Cannot access student portal",
+            Description = "I have been trying to log in for two days.",
+            Status = TicketStatus.Open,
+            Priority = TicketPriority.High,
+            StudentId = studentUser.Id,
+            AgentId = agentUser.Id,
             DepartmentId = departments[0].Id,
-            CategoryId   = categories[0].Id,
-            TenantId     = tenant.Id,
-            CreatedAt    = DateTime.UtcNow,
-            UpdatedAt    = DateTime.UtcNow
-        };
-
-        context.Tickets.Add(sampleTicket);
-        await context.SaveChangesAsync(ct);
-
-        // sample message
-        var sampleMessage = new Message
-        {
-            Content  = "Hello Liya, I have received your ticket. Can you please tell me which browser you are using and what error message appears?",
-            TicketId = sampleTicket.Id,
-            SenderId = users[1].Id,     // Dawit (agent)
+            CategoryId = categories[0].Id,
             TenantId = tenant.Id,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-
-        context.Messages.Add(sampleMessage);
+        context.Tickets.Add(sampleTicket);
         await context.SaveChangesAsync(ct);
 
-        // sample AI suggestions for the ticket
+        // ── 7. Sample Message ──────────────────────────────────────
+        var sampleMessage = new Message
+        {
+            Content = "Hello Liya, I have received your ticket. Which browser are you using?",
+            TicketId = sampleTicket.Id,
+            SenderId = agentUser.Id,
+            TenantId = tenant.Id,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        context.Messages.Add(sampleMessage);
+
+        // ── 8. Sample AI Suggestions ───────────────────────────────
         var suggestions = new List<AiSuggestion>
         {
-            new()
-            {
-                SuggestedText = "Thank you for reaching out. Please try clearing your browser cache and cookies, then attempt to log in again. If the issue persists, try a different browser.",
-                TicketId  = sampleTicket.Id,
-                TenantId  = tenant.Id,
-                Accepted  = false
-            },
-            new()
-            {
-                SuggestedText = "Hello, I can see your account in our system. It appears your password may have expired. Please use the 'Forgot Password' link on the login page to reset it.",
-                TicketId  = sampleTicket.Id,
-                TenantId  = tenant.Id,
-                Accepted  = false
-            },
-            new()
-            {
-                SuggestedText = "Hi Liya, could you please confirm whether you are trying to access the portal from on-campus or off-campus? Some services require a VPN connection when accessed remotely.",
-                TicketId  = sampleTicket.Id,
-                TenantId  = tenant.Id,
-                Accepted  = false
-            }
+            new() { SuggestedText = "Try clearing your browser cache and cookies.", TicketId = sampleTicket.Id, TenantId = tenant.Id },
+            new() { SuggestedText = "Your password may have expired. Use the Forgot Password link.", TicketId = sampleTicket.Id, TenantId = tenant.Id },
+            new() { SuggestedText = "Are you accessing from off-campus? You may need a VPN.", TicketId = sampleTicket.Id, TenantId = tenant.Id }
         };
-
         context.AiSuggestions.AddRange(suggestions);
         await context.SaveChangesAsync(ct);
 
-        logger.LogInformation(
-            "Sample ticket seeded with {SuggestionCount} AI suggestions.",
-            suggestions.Count);
-
-        logger.LogInformation("Database seeding completed successfully.");
+        logger.LogInformation("Database seeding completed.");
     }
 }

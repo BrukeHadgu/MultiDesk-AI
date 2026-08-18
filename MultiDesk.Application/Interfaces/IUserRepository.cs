@@ -1,27 +1,12 @@
-using MultiDesk.Application.Common;
-using MultiDesk.Domain.Entities;
-using MultiDesk.Domain.Enums;
+using MultiDesk.Application.DTOs.Users;
 
 namespace MultiDesk.Application.Interfaces;
 
-public interface IUserRepository : IRepository<User>
+public interface IUserRepository
 {
-    Task<User?> GetByEmailAsync(
-        string email,
-        CancellationToken ct = default);
-
-    Task<IReadOnlyList<User>> GetByRoleAsync(
-        int tenantId,
-        UserRole role,
-        CancellationToken ct = default);
-
-    Task<IReadOnlyList<User>> GetAgentsByDepartmentAsync(
-        int tenantId,
-        int departmentId,
-        CancellationToken ct = default);
-
-    Task<bool> EmailExistsAsync(
-        string email,
-        int tenantId,
-        CancellationToken ct = default);
+    Task<UserResponse?> GetByIdAsync(string userId, CancellationToken ct = default);
+    Task<IReadOnlyList<UserResponse>> GetAllAsync(int tenantId, CancellationToken ct = default);
+    Task<IReadOnlyList<UserResponse>> GetByRoleAsync(int tenantId, string role, CancellationToken ct = default);
+    Task<bool> EmailExistsAsync(string email, int tenantId, CancellationToken ct = default);
+    Task<UserResponse> UpdateAsync(string userId, UpdateUserRequest request, int tenantId, CancellationToken ct = default);
 }

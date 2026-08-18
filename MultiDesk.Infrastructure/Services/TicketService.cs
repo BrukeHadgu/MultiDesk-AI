@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using MultiDesk.Application.DTOs.AiSuggestions;
@@ -6,12 +7,14 @@ using MultiDesk.Application.DTOs.Tickets;
 using MultiDesk.Application.Services;
 using MultiDesk.Domain.Entities;
 using MultiDesk.Domain.Enums;
+using MultiDesk.Infrastructure.Identity;
 using MultiDesk.Infrastructure.Persistence;
 
 namespace MultiDesk.Infrastructure.Services;
 
 public class TicketService(
     MultiDeskDbContext context,
+    UserManager<MultiDeskUser> userManager,
     ILogger<TicketService> logger) : ITicketService
 {
     public async Task<PagedTicketResponse> GetPagedAsync(
@@ -28,37 +31,50 @@ public class TicketService(
 
         var totalCount = await query.CountAsync(ct);
 
-        var items = await query
+        var tickets = await query
             .OrderByDescending(t => t.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(t => new TicketResponse(
+            .Include(t => t.Department)
+            .Include(t => t.Category)
+            .Include(t => t.Messages)
+            .ToListAsync(ct);
+
+        // Load user data separately
+        var userIds = tickets
+            .SelectMany(t => new[] { t.StudentId, t.AgentId })
+            .Where(id => id != null)
+            .Distinct()
+            .ToList();
+
+        var users = await GetUsersByIds(userIds!);
+
+        var items = tickets.Select(t =>
+        {
+            users.TryGetValue(t.StudentId, out var student);
+            var agentName = t.AgentId != null && users.TryGetValue(t.AgentId, out var agent)
+                ? agent.FullName : null;
+
+            return new TicketResponse(
                 t.Id,
                 t.Title,
                 t.Status.ToString(),
                 t.Priority.ToString(),
                 t.Department.Name,
                 t.Category.Name,
-                t.Student.FirstName + " " + t.Student.LastName,
-                t.Agent != null
-                    ? t.Agent.FirstName + " " + t.Agent.LastName
-                    : null,
+                student?.FullName ?? "Unknown",
+                agentName,
                 t.CreatedAt,
                 t.UpdatedAt,
                 t.ResolvedAt,
-                t.Messages.Count))
-            .ToListAsync(ct);
+                t.Messages.Count);
+        }).ToList();
 
         var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
 
         return new PagedTicketResponse(
-            items,
-            totalCount,
-            page,
-            pageSize,
-            totalPages,
-            page < totalPages,
-            page > 1);
+            items, totalCount, page, pageSize,
+            totalPages, page < totalPages, page > 1);
     }
 
     public async Task<TicketDetailResponse?> GetByIdAsync(
@@ -68,16 +84,44 @@ public class TicketService(
         var ticket = await context.Tickets
             .AsNoTracking()
             .Where(t => t.Id == ticketId && t.TenantId == tenantId)
-            .Include(t => t.Student)
-            .Include(t => t.Agent)
             .Include(t => t.Department)
             .Include(t => t.Category)
             .Include(t => t.Messages.OrderBy(m => m.CreatedAt))
-                .ThenInclude(m => m.Sender)
             .Include(t => t.AiSuggestions)
             .FirstOrDefaultAsync(ct);
 
         if (ticket is null) return null;
+
+        // Load users separately
+        var userIds = new List<string> { ticket.StudentId };
+        if (ticket.AgentId != null) userIds.Add(ticket.AgentId);
+
+        var senderIds = ticket.Messages.Select(m => m.SenderId).Distinct();
+        userIds.AddRange(senderIds);
+
+        var users = await GetUsersByIds(userIds.Distinct().ToList());
+
+        users.TryGetValue(ticket.StudentId, out var student);
+        var agent = ticket.AgentId != null && users.TryGetValue(ticket.AgentId, out var a)
+            ? a : null;
+
+        // Get roles for message senders
+        var messages = new List<MessageResponse>();
+        foreach (var m in ticket.Messages)
+        {
+            users.TryGetValue(m.SenderId, out var sender);
+            var senderRoles = sender != null
+                ? await userManager.GetRolesAsync(sender)
+                : new List<string>();
+
+            messages.Add(new MessageResponse(
+                m.Id,
+                m.Content,
+                m.SenderId,
+                sender?.FullName ?? "Unknown",
+                senderRoles.FirstOrDefault() ?? "Student",
+                m.CreatedAt));
+        }
 
         return new TicketDetailResponse(
             ticket.Id,
@@ -88,47 +132,38 @@ public class TicketService(
             ticket.Department.Name,
             ticket.Category.Name,
             ticket.StudentId,
-            ticket.Student.FullName,
-            ticket.Student.Email,
+            student?.FullName ?? "Unknown",
+            student?.Email ?? string.Empty,
             ticket.AgentId,
-            ticket.Agent?.FullName,
-            ticket.Agent?.Email,
+            agent?.FullName,
+            agent?.Email,
             ticket.AttachmentPath,
             ticket.CreatedAt,
             ticket.UpdatedAt,
             ticket.ResolvedAt,
-            ticket.Messages.Select(m => new MessageResponse(
-                m.Id,
-                m.Content,
-                m.SenderId,
-                m.Sender.FullName,
-                m.Sender.Role.ToString(),
-                m.CreatedAt)).ToList(),
+            messages,
             ticket.AiSuggestions.Select(a => new AiSuggestionResponse(
-                a.Id,
-                a.SuggestedText,
-                a.Accepted,
-                a.CreatedAt)).ToList());
+                a.Id, a.SuggestedText, a.Accepted, a.CreatedAt)).ToList());
     }
 
     public async Task<TicketResponse> CreateAsync(
         CreateTicketRequest request,
-        int studentId,
+        string studentId,
         int tenantId,
         CancellationToken ct = default)
     {
         var ticket = new Ticket
         {
-            Title        = request.Title,
-            Description  = request.Description,
-            Priority     = request.Priority,
+            Title = request.Title,
+            Description = request.Description,
+            Priority = request.Priority,
             DepartmentId = request.DepartmentId,
-            CategoryId   = request.CategoryId,
-            StudentId    = studentId,
-            TenantId     = tenantId,
-            Status       = TicketStatus.Open,
-            CreatedAt    = DateTime.UtcNow,
-            UpdatedAt    = DateTime.UtcNow,
+            CategoryId = request.CategoryId,
+            StudentId = studentId,
+            TenantId = tenantId,
+            Status = TicketStatus.Open,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
             AttachmentPath = request.AttachmentPath
         };
 
@@ -152,17 +187,12 @@ public class TicketService(
         var ticket = await context.Tickets
             .FirstOrDefaultAsync(t => t.Id == ticketId
                                    && t.TenantId == tenantId, ct)
-            ?? throw new KeyNotFoundException(
-                $"Ticket {ticketId} not found.");
+            ?? throw new KeyNotFoundException($"Ticket {ticketId} not found.");
 
-        if (request.Title is not null)
-            ticket.Title = request.Title;
-
-        if (request.Description is not null)
-            ticket.Description = request.Description;
-
-        if (request.Priority.HasValue)
-            ticket.Priority = request.Priority.Value;
+        if (request.Title is not null) ticket.Title = request.Title;
+        if (request.Description is not null) ticket.Description = request.Description;
+        if (request.Priority.HasValue) ticket.Priority = request.Priority.Value;
+        if (request.AgentId is not null) ticket.AgentId = request.AgentId;
 
         if (request.Status.HasValue)
         {
@@ -171,66 +201,44 @@ public class TicketService(
                 ticket.ResolvedAt = DateTime.UtcNow;
         }
 
-        if (request.AgentId.HasValue)
-            ticket.AgentId = request.AgentId.Value;
-
         ticket.UpdatedAt = DateTime.UtcNow;
-
         await context.SaveChangesAsync(ct);
 
-        logger.LogInformation("Ticket {TicketId} updated", ticketId);
-
-        return (await GetByIdAsync(ticketId, tenantId, ct))!
-            .ToTicketResponse();
+        return (await GetByIdAsync(ticketId, tenantId, ct))!.ToTicketResponse();
     }
 
     public async Task DeleteAsync(
-        int ticketId,
-        int tenantId,
-        int deletedBy,
+        int ticketId, int tenantId, string deletedBy,
         CancellationToken ct = default)
     {
         var ticket = await context.Tickets
             .FirstOrDefaultAsync(t => t.Id == ticketId
                                    && t.TenantId == tenantId, ct)
-            ?? throw new KeyNotFoundException(
-                $"Ticket {ticketId} not found.");
+            ?? throw new KeyNotFoundException($"Ticket {ticketId} not found.");
 
-        // Soft delete — never physically remove records
-        ticket.IsDeleted  = true;
-        ticket.DeletedAt  = DateTime.UtcNow;
-        ticket.DeletedBy  = deletedBy;
-        ticket.UpdatedAt  = DateTime.UtcNow;
-
-        await context.SaveChangesAsync(ct);
-
-        logger.LogInformation(
-            "Ticket {TicketId} soft-deleted by user {UserId}",
-            ticketId, deletedBy);
-    }
-
-    public async Task<TicketResponse> AssignAgentAsync(
-        int ticketId, int agentId, int tenantId,
-        CancellationToken ct = default)
-    {
-        var ticket = await context.Tickets
-            .FirstOrDefaultAsync(t => t.Id == ticketId
-                                   && t.TenantId == tenantId, ct)
-            ?? throw new KeyNotFoundException(
-                $"Ticket {ticketId} not found.");
-
-        ticket.AgentId   = agentId;
-        ticket.Status    = TicketStatus.InProgress;
+        ticket.IsDeleted = true;
+        ticket.DeletedAt = DateTime.UtcNow;
+        ticket.DeletedBy = deletedBy;
         ticket.UpdatedAt = DateTime.UtcNow;
 
         await context.SaveChangesAsync(ct);
+    }
 
-        logger.LogInformation(
-            "Ticket {TicketId} assigned to agent {AgentId}",
-            ticketId, agentId);
+    public async Task<TicketResponse> AssignAgentAsync(
+        int ticketId, string agentId, int tenantId,
+        CancellationToken ct = default)
+    {
+        var ticket = await context.Tickets
+            .FirstOrDefaultAsync(t => t.Id == ticketId
+                                   && t.TenantId == tenantId, ct)
+            ?? throw new KeyNotFoundException($"Ticket {ticketId} not found.");
 
-        return (await GetByIdAsync(ticketId, tenantId, ct))!
-            .ToTicketResponse();
+        ticket.AgentId = agentId;
+        ticket.Status = TicketStatus.InProgress;
+        ticket.UpdatedAt = DateTime.UtcNow;
+
+        await context.SaveChangesAsync(ct);
+        return (await GetByIdAsync(ticketId, tenantId, ct))!.ToTicketResponse();
     }
 
     public async Task<TicketResponse> ChangeStatusAsync(
@@ -240,18 +248,27 @@ public class TicketService(
         var ticket = await context.Tickets
             .FirstOrDefaultAsync(t => t.Id == ticketId
                                    && t.TenantId == tenantId, ct)
-            ?? throw new KeyNotFoundException(
-                $"Ticket {ticketId} not found.");
+            ?? throw new KeyNotFoundException($"Ticket {ticketId} not found.");
 
-        ticket.Status    = newStatus;
+        ticket.Status = newStatus;
         ticket.UpdatedAt = DateTime.UtcNow;
 
         if (newStatus == TicketStatus.Resolved)
             ticket.ResolvedAt = DateTime.UtcNow;
 
         await context.SaveChangesAsync(ct);
+        return (await GetByIdAsync(ticketId, tenantId, ct))!.ToTicketResponse();
+    }
 
-        return (await GetByIdAsync(ticketId, tenantId, ct))!
-            .ToTicketResponse();
+    // ── Private Helper ──────────────────────────────────────────────
+
+    private async Task<Dictionary<string, MultiDeskUser>> GetUsersByIds(
+        List<string> userIds)
+    {
+        var users = await userManager.Users
+            .Where(u => userIds.Contains(u.Id))
+            .ToListAsync();
+
+        return users.ToDictionary(u => u.Id);
     }
 }

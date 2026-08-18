@@ -1,38 +1,61 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MultiDesk.Application.DTOs.Messages;
 using MultiDesk.Application.Services;
 using MultiDesk.Domain.Entities;
+using MultiDesk.Infrastructure.Identity;
 using MultiDesk.Infrastructure.Persistence;
 
 namespace MultiDesk.Infrastructure.Services;
 
-public class MessageService(MultiDeskDbContext context) : IMessageService
+public class MessageService(
+    MultiDeskDbContext context,
+    UserManager<MultiDeskUser> userManager) : IMessageService
 {
     public async Task<IReadOnlyList<MessageResponse>> GetByTicketAsync(
         int ticketId, int tenantId,
-        CancellationToken ct = default) =>
-        await context.Messages
+        CancellationToken ct = default)
+    {
+        var messages = await context.Messages
             .AsNoTracking()
             .Where(m => m.TicketId == ticketId && m.TenantId == tenantId)
-            .Include(m => m.Sender)
             .OrderBy(m => m.CreatedAt)
-            .Select(m => new MessageResponse(
+            .ToListAsync(ct);
+
+        // Load senders separately
+        var senderIds = messages.Select(m => m.SenderId).Distinct().ToList();
+        var senders = await userManager.Users
+            .Where(u => senderIds.Contains(u.Id))
+            .ToListAsync(ct);
+        var senderMap = senders.ToDictionary(u => u.Id);
+
+        var result = new List<MessageResponse>();
+        foreach (var m in messages)
+        {
+            senderMap.TryGetValue(m.SenderId, out var sender);
+            var roles = sender != null
+                ? await userManager.GetRolesAsync(sender)
+                : new List<string>();
+
+            result.Add(new MessageResponse(
                 m.Id,
                 m.Content,
                 m.SenderId,
-                m.Sender.FirstName + " " + m.Sender.LastName,
-                m.Sender.Role.ToString(),
-                m.CreatedAt))
-            .ToListAsync(ct);
+                sender?.FullName ?? "Unknown",
+                roles.FirstOrDefault() ?? "Student",
+                m.CreatedAt));
+        }
+
+        return result;
+    }
 
     public async Task<MessageResponse> CreateAsync(
         int ticketId,
         CreateMessageRequest request,
-        int senderId,
+        string senderId,
         int tenantId,
         CancellationToken ct = default)
     {
-        // Verify ticket exists and belongs to tenant
         var ticketExists = await context.Tickets
             .AnyAsync(t => t.Id == ticketId && t.TenantId == tenantId, ct);
 
@@ -41,31 +64,34 @@ public class MessageService(MultiDeskDbContext context) : IMessageService
 
         var message = new Message
         {
-            Content   = request.Content,
-            TicketId  = ticketId,
-            SenderId  = senderId,
-            TenantId  = tenantId,
+            Content = request.Content,
+            TicketId = ticketId,
+            SenderId = senderId,
+            TenantId = tenantId,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
 
         context.Messages.Add(message);
 
-        // Update ticket UpdatedAt when new message arrives
+        // Update ticket UpdatedAt
         var ticket = await context.Tickets.FindAsync(ticketId, ct);
         if (ticket is not null)
             ticket.UpdatedAt = DateTime.UtcNow;
 
         await context.SaveChangesAsync(ct);
 
-        var sender = await context.Users.FindAsync(senderId, ct);
+        var sender = await userManager.FindByIdAsync(senderId);
+        var roles = sender != null
+            ? await userManager.GetRolesAsync(sender)
+            : new List<string>();
 
         return new MessageResponse(
             message.Id,
             message.Content,
             message.SenderId,
-            sender!.FullName,
-            sender.Role.ToString(),
+            sender?.FullName ?? "Unknown",
+            roles.FirstOrDefault() ?? "Student",
             message.CreatedAt);
     }
 }

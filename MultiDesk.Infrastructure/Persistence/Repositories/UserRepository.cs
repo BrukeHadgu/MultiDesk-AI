@@ -1,40 +1,98 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MultiDesk.Application.Interfaces;
-using MultiDesk.Domain.Entities;
-using MultiDesk.Domain.Enums;
+using MultiDesk.Application.DTOs.Users;
+using MultiDesk.Infrastructure.Identity;
 
 namespace MultiDesk.Infrastructure.Persistence.Repositories;
 
-public class UserRepository(MultiDeskDbContext context)
-    : Repository<User>(context), IUserRepository
+public class UserRepository(
+    UserManager<MultiDeskUser> userManager) : IUserRepository
 {
-    public async Task<User?> GetByEmailAsync(
-        string email, CancellationToken ct = default) =>
-        await Context.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Email == email, ct);
+    public async Task<UserResponse?> GetByIdAsync(
+        string userId,
+        CancellationToken ct = default)
+    {
+        var user = await userManager.FindByIdAsync(userId);
+        if (user is null) return null;
 
-    public async Task<IReadOnlyList<User>> GetByRoleAsync(
-        int tenantId, UserRole role, CancellationToken ct = default) =>
-        await Context.Users
-            .AsNoTracking()
-            .Where(u => u.TenantId == tenantId && u.Role == role)
-            .OrderBy(u => u.LastName)
+        var roles = await userManager.GetRolesAsync(user);
+        return MapToResponse(user, roles.FirstOrDefault() ?? "Student");
+    }
+
+    public async Task<IReadOnlyList<UserResponse>> GetAllAsync(
+        int tenantId,
+        CancellationToken ct = default)
+    {
+        var users = await userManager.Users
+            .Where(u => u.TenantId == tenantId)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<User>> GetAgentsByDepartmentAsync(
-        int tenantId, int departmentId, CancellationToken ct = default) =>
-        await Context.Users
-            .AsNoTracking()
-            .Where(u => u.TenantId == tenantId
-                     && u.Role == UserRole.Agent
-                     && u.DepartmentId == departmentId
-                     && u.IsActive)
+        var result = new List<UserResponse>();
+        foreach (var user in users)
+        {
+            var roles = await userManager.GetRolesAsync(user);
+            result.Add(MapToResponse(user, roles.FirstOrDefault() ?? "Student"));
+        }
+
+        return result.OrderBy(u => u.LastName).ToList();
+    }
+
+    public async Task<IReadOnlyList<UserResponse>> GetByRoleAsync(
+        int tenantId,
+        string role,
+        CancellationToken ct = default)
+    {
+        var usersInRole = await userManager.GetUsersInRoleAsync(role);
+
+        var result = usersInRole
+            .Where(u => u.TenantId == tenantId)
+            .Select(u => MapToResponse(u, role))
             .OrderBy(u => u.LastName)
-            .ToListAsync(ct);
+            .ToList();
+
+        return result;
+    }
 
     public async Task<bool> EmailExistsAsync(
-        string email, int tenantId, CancellationToken ct = default) =>
-        await Context.Users
-            .AnyAsync(u => u.Email == email && u.TenantId == tenantId, ct);
+        string email,
+        int tenantId,
+        CancellationToken ct = default) =>
+        await userManager.Users
+            .AnyAsync(u => u.Email == email
+                        && u.TenantId == tenantId, ct);
+
+    public async Task<UserResponse> UpdateAsync(
+        string userId,
+        UpdateUserRequest request,
+        int tenantId,
+        CancellationToken ct = default)
+    {
+        var user = await userManager.FindByIdAsync(userId)
+            ?? throw new KeyNotFoundException($"User {userId} not found.");
+
+        if (request.FirstName is not null) user.FirstName = request.FirstName;
+        if (request.LastName is not null) user.LastName = request.LastName;
+        if (request.IsActive.HasValue) user.IsActive = request.IsActive.Value;
+        if (request.DepartmentId.HasValue) user.Department = request.DepartmentId.Value.ToString();
+
+        user.UpdatedAt = DateTime.UtcNow;
+        await userManager.UpdateAsync(user);
+
+        var roles = await userManager.GetRolesAsync(user);
+        return MapToResponse(user, roles.FirstOrDefault() ?? "Student");
+    }
+
+    private static UserResponse MapToResponse(
+        MultiDeskUser user, string role) =>
+        new(
+            user.Id,
+            user.Email ?? string.Empty,
+            user.FirstName,
+            user.LastName,
+            user.FullName,
+            role,
+            user.IsActive,
+            user.Department,
+            user.CreatedAt);
 }

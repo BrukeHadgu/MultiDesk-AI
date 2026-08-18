@@ -10,8 +10,8 @@ public class Message
     public DateTime? DeletedAt { get; set; }
     public int TenantId { get; set; } = 1;
     public int TicketId { get; set; }
-    public int SenderId { get; set; }
+    public string SenderId { get; set; } = string.Empty;
 
+    // Only domain navigation — no user navigation
     public Ticket Ticket { get; set; } = null!;
-    public User Sender { get; set; } = null!;
 }

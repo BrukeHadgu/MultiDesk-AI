@@ -14,15 +14,14 @@ public class MessageConfiguration : IEntityTypeConfiguration<Message>
             .IsRequired()
             .HasMaxLength(5000);
 
+        builder.Property(m => m.SenderId)
+            .IsRequired()
+            .HasMaxLength(450);
+
         builder.HasOne(m => m.Ticket)
             .WithMany(t => t.Messages)
             .HasForeignKey(m => m.TicketId)
             .OnDelete(DeleteBehavior.Cascade);
-
-        builder.HasOne(m => m.Sender)
-            .WithMany(u => u.Messages)
-            .HasForeignKey(m => m.SenderId)
-            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(m => m.TenantId)
             .HasDatabaseName("IX_Messages_TenantId");

@@ -1,5 +1,7 @@
 using MultiDesk.Domain.Enums;
+
 namespace MultiDesk.Domain.Entities;
+
 public class Ticket
 {
     public int Id { get; set; }
@@ -13,16 +15,17 @@ public class Ticket
     public DateTime? ResolvedAt { get; set; }
     public bool IsDeleted { get; set; } = false;
     public DateTime? DeletedAt { get; set; }
-    public int? DeletedBy { get; set; }
+    public string? DeletedBy { get; set; }
     public int TenantId { get; set; } = 1;
-    public int StudentId { get; set; }
-    public int? AgentId { get; set; }
     public int DepartmentId { get; set; }
     public int CategoryId { get; set; }
 
+    // Identity user IDs — strings, no navigation properties
+    public string StudentId { get; set; } = string.Empty;
+    public string? AgentId { get; set; }
+
+    // These navigation properties remain — they point to Domain entities
     public Tenant Tenant { get; set; } = null!;
-    public User Student { get; set; } = null!;
-    public User? Agent { get; set; }
     public Department Department { get; set; } = null!;
     public Category Category { get; set; } = null!;
     public ICollection<Message> Messages { get; set; } = new List<Message>();

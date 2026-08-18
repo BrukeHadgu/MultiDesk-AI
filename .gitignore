@@ -8,6 +8,8 @@ MultiDesk-Client/node_modules/
 
 # Environment files
 **/appsettings.Development.json
+**/appsettings.json
+**/appsettings.Production.json
 **/.env
 
 # User secrets

@@ -19,12 +19,12 @@ public interface ITicketRepository : IRepository<Ticket>
 
     // Get tickets assigned to a specific agent
     Task<IReadOnlyList<Ticket>> GetByAgentAsync(
-        int agentId,
+        string agentId,
         CancellationToken ct = default);
 
     // Get tickets submitted by a specific student
     Task<IReadOnlyList<Ticket>> GetByStudentAsync(
-        int studentId,
+        string studentId,
         CancellationToken ct = default);
 
     // Get tickets for a department

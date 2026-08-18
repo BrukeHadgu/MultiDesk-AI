@@ -1,74 +1,69 @@
 using System.Text;
-using Microsoft.AspNetCore.OpenApi;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using MultiDesk.Api.ExceptionHandlers;
 using MultiDesk.Application.Common;
 using MultiDesk.Application.Interfaces;
+using MultiDesk.Application.Services;
 using MultiDesk.Application.Validators;
+using MultiDesk.Infrastructure.Identity;
 using MultiDesk.Infrastructure.Persistence;
 using MultiDesk.Infrastructure.Persistence.Repositories;
 using MultiDesk.Infrastructure.Services;
 using Scalar.AspNetCore;
-using MultiDesk.Application.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// controllers, swagger, and endpoints
+// ── Controllers + API ──────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
 
-// db context configuration
+// ── Database ───────────────────────────────────────────────────────
 builder.Services.AddDbContext<MultiDeskDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("MultiDeskDatabase")));
 
-// repositories and unit of work
-builder.Services.AddScoped<ITicketRepository, TicketRepository>();
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<IDepartmentRepository, DepartmentRepository>();
-builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+// ── ASP.NET Core Identity ──────────────────────────────────────────
+builder.Services.AddIdentityCore<MultiDeskUser>(options =>
+{
+    // Enterprise Password Policy
+    options.Password.RequiredLength = 12;
+    options.Password.RequireUppercase = true;
+    options.Password.RequireDigit = true;
+    options.Password.RequireNonAlphanumeric = true;
 
-// authentication and authorization services
-builder.Services.AddScoped<IJwtService, JwtService>();
-builder.Services.AddScoped<IAuthService, AuthService>();
+    // Brute-Force Lockout Protection
+    options.Lockout.MaxFailedAccessAttempts = 5;
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+    options.Lockout.AllowedForNewUsers = true;
+})
+.AddRoles<IdentityRole>()
+.AddEntityFrameworkStores<MultiDeskDbContext>();
 
-// application services
-builder.Services.AddScoped<ITicketService, TicketService>();
-builder.Services.AddScoped<IDepartmentService, DepartmentService>();
-builder.Services.AddScoped<IUserService, UserService>();
-builder.Services.AddScoped<IMessageService, MessageService>();
-builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
-
-// seed data service
-builder.Services.AddScoped<MultiDeskSeeder>();
-
-// validators
-builder.Services.AddValidatorsFromAssemblyContaining<LoginRequestValidator>();
-
-// jwt authentication configuration
+// ── JWT Authentication ─────────────────────────────────────────────
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey   = jwtSettings["SecretKey"]!;
+var secretKey = jwtSettings["SecretKey"]!;
 
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme    = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 })
 .AddJwtBearer(options =>
 {
     options.TokenValidationParameters = new TokenValidationParameters
     {
-        ValidateIssuer           = true,
-        ValidateAudience         = true,
-        ValidateLifetime         = true,
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ValidIssuer              = jwtSettings["Issuer"],
-        ValidAudience            = jwtSettings["Audience"],
-        IssuerSigningKey         = new SymmetricSecurityKey(
+        ValidIssuer = jwtSettings["Issuer"],
+        ValidAudience = jwtSettings["Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(secretKey)),
         ClockSkew = TimeSpan.Zero
     };
@@ -76,11 +71,31 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
-// exception handling and problem details
+// ── Repositories + Unit of Work ────────────────────────────────────
+builder.Services.AddScoped<ITicketRepository, TicketRepository>();
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IDepartmentRepository, DepartmentRepository>();
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+// ── Application Services ───────────────────────────────────────────
+builder.Services.AddScoped<ITicketService, TicketService>();
+builder.Services.AddScoped<IDepartmentService, DepartmentService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IMessageService, MessageService>();
+builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
+builder.Services.AddScoped<IAiSuggestionService, AiSuggestionService>();
+
+// ── Seeder ─────────────────────────────────────────────────────────
+builder.Services.AddScoped<MultiDeskSeeder>();
+
+// ── Validation ─────────────────────────────────────────────────────
+builder.Services.AddValidatorsFromAssemblyContaining<LoginRequestValidator>();
+
+// ── Exception Handler ──────────────────────────────────────────────
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
-// cors for Angular frontend
+// ── CORS ───────────────────────────────────────────────────────────
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAngular", policy =>
@@ -91,14 +106,14 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// seed data on startup
+// ── Seed Database ──────────────────────────────────────────────────
 using (var scope = app.Services.CreateScope())
 {
     var seeder = scope.ServiceProvider.GetRequiredService<MultiDeskSeeder>();
     await seeder.SeedAsync();
 }
 
-// Middleware pipeline
+// ── Middleware Pipeline ────────────────────────────────────────────
 app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())

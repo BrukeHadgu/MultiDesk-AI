@@ -1,7 +1,7 @@
 namespace MultiDesk.Application.DTOs.Users;
 
 public record UserResponse(
-    int Id,
+    string Id,           // string GUID — Identity user ID
     string Email,
     string FirstName,
     string LastName,

@@ -45,16 +45,13 @@ public class TicketsController(
 
     [HttpPost]
     [Authorize(Roles = "Student")]
-    [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status201Created)]
-    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
-    [EndpointSummary("Submit a new support ticket")]
     public async Task<IActionResult> Create(
         [FromBody] CreateTicketRequest request,
         CancellationToken ct)
     {
-        var studentId = User.GetUserId();
-        var tenantId  = User.GetTenantId();
-        var ticket    = await ticketService.CreateAsync(
+        var studentId = User.GetUserId();   // now returns string
+        var tenantId = User.GetTenantId();
+        var ticket = await ticketService.CreateAsync(
             request, studentId, tenantId, ct);
         return CreatedAtAction(nameof(GetById), new { id = ticket.Id }, ticket);
     }
@@ -76,13 +73,10 @@ public class TicketsController(
 
     [HttpDelete("{id:int}")]
     [Authorize(Roles = "Admin")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    [EndpointSummary("Soft delete a ticket (Admin only)")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
-        var tenantId  = User.GetTenantId();
-        var deletedBy = User.GetUserId();
+        var tenantId = User.GetTenantId();
+        var deletedBy = User.GetUserId();   // now returns string
         await ticketService.DeleteAsync(id, tenantId, deletedBy, ct);
         return NoContent();
     }
@@ -93,12 +87,12 @@ public class TicketsController(
     [EndpointSummary("Assign an agent to a ticket")]
     public async Task<IActionResult> AssignAgent(
         int id,
-        [FromQuery] int agentId,
+        [FromQuery] string agentId,
         CancellationToken ct)
     {
         var tenantId = User.GetTenantId();
         var ticket   = await ticketService.AssignAgentAsync(
-            id, agentId, tenantId, ct);
+            id,  agentId, tenantId, ct);
         return Ok(ticket);
     }
 
@@ -130,16 +124,14 @@ public class TicketsController(
     }
 
     [HttpPost("{id:int}/messages")]
-    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status201Created)]
-    [EndpointSummary("Add a reply message to a ticket")]
     public async Task<IActionResult> AddMessage(
-        int id,
-        [FromBody] CreateMessageRequest request,
-        CancellationToken ct)
+    int id,
+    [FromBody] CreateMessageRequest request,
+    CancellationToken ct)
     {
-        var senderId = User.GetUserId();
+        var senderId = User.GetUserId();   // string
         var tenantId = User.GetTenantId();
-        var message  = await messageService.CreateAsync(
+        var message = await messageService.CreateAsync(
             id, request, senderId, tenantId, ct);
         return CreatedAtAction(nameof(GetMessages), new { id }, message);
     }
