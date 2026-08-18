@@ -17,17 +17,17 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ── Controllers + API ──────────────────────────────────────────────
+// controllers, swagger, and OpenAPI
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
 
-// ── Database ───────────────────────────────────────────────────────
+// dbcontext with PostgreSQL
 builder.Services.AddDbContext<MultiDeskDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("MultiDeskDatabase")));
 
-// ── ASP.NET Core Identity ──────────────────────────────────────────
+// asp.net identity with custom user class
 builder.Services.AddIdentityCore<MultiDeskUser>(options =>
 {
     // Enterprise Password Policy
@@ -44,7 +44,10 @@ builder.Services.AddIdentityCore<MultiDeskUser>(options =>
 .AddRoles<IdentityRole>()
 .AddEntityFrameworkStores<MultiDeskDbContext>();
 
-// ── JWT Authentication ─────────────────────────────────────────────
+
+builder.Services.AddScoped<TokenService>();
+
+// jwt authentication and authorization
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var secretKey = jwtSettings["SecretKey"]!;
 
@@ -61,23 +64,23 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ValidIssuer = jwtSettings["Issuer"],
-        ValidAudience = jwtSettings["Audience"],
+        ValidIssuer = builder.Configuration["Jwt:Issuer"],
+        ValidAudience = builder.Configuration["Jwt:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(secretKey)),
+            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
         ClockSkew = TimeSpan.Zero
     };
 });
 
 builder.Services.AddAuthorization();
 
-// ── Repositories + Unit of Work ────────────────────────────────────
+// repositories and unit of work
 builder.Services.AddScoped<ITicketRepository, TicketRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IDepartmentRepository, DepartmentRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
-// ── Application Services ───────────────────────────────────────────
+// application services
 builder.Services.AddScoped<ITicketService, TicketService>();
 builder.Services.AddScoped<IDepartmentService, DepartmentService>();
 builder.Services.AddScoped<IUserService, UserService>();
@@ -85,17 +88,17 @@ builder.Services.AddScoped<IMessageService, MessageService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<IAiSuggestionService, AiSuggestionService>();
 
-// ── Seeder ─────────────────────────────────────────────────────────
+// seeder
 builder.Services.AddScoped<MultiDeskSeeder>();
 
-// ── Validation ─────────────────────────────────────────────────────
+// validators
 builder.Services.AddValidatorsFromAssemblyContaining<LoginRequestValidator>();
 
-// ── Exception Handler ──────────────────────────────────────────────
+// exception handling and problem details middleware
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
-// ── CORS ───────────────────────────────────────────────────────────
+// cors policy to allow Angular frontend to access the API
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAngular", policy =>
@@ -106,14 +109,14 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// ── Seed Database ──────────────────────────────────────────────────
+// seed the database with initial data 
 using (var scope = app.Services.CreateScope())
 {
     var seeder = scope.ServiceProvider.GetRequiredService<MultiDeskSeeder>();
     await seeder.SeedAsync();
 }
 
-// ── Middleware Pipeline ────────────────────────────────────────────
+// middleware pipeline
 app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())

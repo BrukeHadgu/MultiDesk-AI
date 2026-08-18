@@ -16,6 +16,7 @@ public class MultiDeskDbContext(DbContextOptions<MultiDeskDbContext> options)
     public DbSet<Ticket> Tickets => Set<Ticket>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<AiSuggestion> AiSuggestions => Set<AiSuggestion>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

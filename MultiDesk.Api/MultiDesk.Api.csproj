@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
     <ProjectReference Include="..\MultiDesk.Application\MultiDesk.Application.csproj" />
@@ -21,6 +21,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>b44fb554-5685-4069-b764-4fc5533f27bb</UserSecretsId>
   </PropertyGroup>
 
 </Project>
