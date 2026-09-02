@@ -1,3 +1,4 @@
+using MultiDesk.Domain.Enums;
 namespace MultiDesk.Domain.Entities;
 public class Category
 {
@@ -12,6 +13,7 @@ public class Category
     public int TenantId { get; set; } = 1;
     public int DepartmentId { get; set; }
 
+    public TicketPriority DefaultPriority { get; set; } = TicketPriority.Medium;
     public Department Department { get; set; } = null!;
     public ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();
 }

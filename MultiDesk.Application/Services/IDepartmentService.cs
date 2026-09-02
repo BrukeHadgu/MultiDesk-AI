@@ -22,4 +22,9 @@ public interface IDepartmentService
         int departmentId,
         int tenantId,
         CancellationToken ct = default);
+    Task<CategoryResponse> CreateCategoryAsync(
+    int departmentId,
+    CreateCategoryRequest request,
+    int tenantId,
+    CancellationToken ct = default);
 }

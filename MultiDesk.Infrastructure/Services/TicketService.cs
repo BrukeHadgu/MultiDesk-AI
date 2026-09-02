@@ -20,11 +20,15 @@ public class TicketService(
     public async Task<PagedTicketResponse> GetPagedAsync(
         int tenantId, int page, int pageSize,
         TicketStatus? status = null,
+        string? studentId = null,
         CancellationToken ct = default)
     {
         var query = context.Tickets
             .AsNoTracking()
             .Where(t => t.TenantId == tenantId);
+
+        if (!string.IsNullOrEmpty(studentId))
+            query = query.Where(t => t.StudentId == studentId);
 
         if (status.HasValue)
             query = query.Where(t => t.Status == status.Value);
@@ -78,12 +82,21 @@ public class TicketService(
     }
 
     public async Task<TicketDetailResponse?> GetByIdAsync(
-        int ticketId, int tenantId,
+        int ticketId,
+        int tenantId,
+        string? requestingUserId = null, 
+        string? requestingUserRole = null, 
         CancellationToken ct = default)
     {
-        var ticket = await context.Tickets
-            .AsNoTracking()
-            .Where(t => t.Id == ticketId && t.TenantId == tenantId)
+        var query = context.Tickets
+       .AsNoTracking()
+       .Where(t => t.Id == ticketId && t.TenantId == tenantId);
+
+        // Students can only view their own tickets
+        if (requestingUserRole == "Student")
+            query = query.Where(t => t.StudentId == requestingUserId);
+
+        var ticket = await query
             .Include(t => t.Department)
             .Include(t => t.Category)
             .Include(t => t.Messages.OrderBy(m => m.CreatedAt))
@@ -152,11 +165,19 @@ public class TicketService(
         int tenantId,
         CancellationToken ct = default)
     {
+        // Load the category to get its default priority
+        var category = await context.Categories
+            .FirstOrDefaultAsync(c => c.Id == request.CategoryId
+                                   && c.TenantId == tenantId, ct)
+            ?? throw new KeyNotFoundException(
+                $"Category {request.CategoryId} not found.");
+
+        // Priority comes from the category not from the student
         var ticket = new Ticket
         {
             Title = request.Title,
             Description = request.Description,
-            Priority = request.Priority,
+            Priority = category.DefaultPriority,  // system assigned
             DepartmentId = request.DepartmentId,
             CategoryId = request.CategoryId,
             StudentId = studentId,
@@ -171,10 +192,11 @@ public class TicketService(
         await context.SaveChangesAsync(ct);
 
         logger.LogInformation(
-            "Ticket {TicketId} created by student {StudentId}",
-            ticket.Id, studentId);
+            "Ticket {TicketId} created with system priority {Priority} " +
+            "from category {CategoryId}",
+            ticket.Id, ticket.Priority, request.CategoryId);
 
-        return (await GetByIdAsync(ticket.Id, tenantId, ct))!
+        return (await GetByIdAsync(ticket.Id, tenantId, ct: ct))!
             .ToTicketResponse();
     }
 
@@ -204,7 +226,7 @@ public class TicketService(
         ticket.UpdatedAt = DateTime.UtcNow;
         await context.SaveChangesAsync(ct);
 
-        return (await GetByIdAsync(ticketId, tenantId, ct))!.ToTicketResponse();
+        return (await GetByIdAsync(ticketId, tenantId, null, null, ct))!.ToTicketResponse();
     }
 
     public async Task DeleteAsync(
@@ -238,7 +260,9 @@ public class TicketService(
         ticket.UpdatedAt = DateTime.UtcNow;
 
         await context.SaveChangesAsync(ct);
-        return (await GetByIdAsync(ticketId, tenantId, ct))!.ToTicketResponse();
+
+        return (await GetByIdAsync(ticketId, tenantId, ct: ct))!
+            .ToTicketResponse();
     }
 
     public async Task<TicketResponse> ChangeStatusAsync(
@@ -257,7 +281,7 @@ public class TicketService(
             ticket.ResolvedAt = DateTime.UtcNow;
 
         await context.SaveChangesAsync(ct);
-        return (await GetByIdAsync(ticketId, tenantId, ct))!.ToTicketResponse();
+        return (await GetByIdAsync(ticketId, tenantId, null, null, ct))!.ToTicketResponse();
     }
 
     // ── Private Helper ──────────────────────────────────────────────

@@ -6,4 +6,5 @@ public record CategoryResponse(
     string? Description,
     bool IsActive,
     int DepartmentId,
-    string DepartmentName);
+    string DepartmentName,
+    string DefaultPriority);

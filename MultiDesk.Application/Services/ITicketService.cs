@@ -10,11 +10,14 @@ public interface ITicketService
         int page,
         int pageSize,
         TicketStatus? status = null,
+        string? studentId = null,
         CancellationToken ct = default);
 
     Task<TicketDetailResponse?> GetByIdAsync(
         int ticketId,
         int tenantId,
+        string? requestingUserId = null,
+        string? requestingUserRole = null,  
         CancellationToken ct = default);
 
     Task<TicketResponse> CreateAsync(
@@ -36,10 +39,10 @@ public interface ITicketService
         CancellationToken ct = default);
 
     Task<TicketResponse> AssignAgentAsync(
-        int ticketId,
-        string agentId,
-        int tenantId,
-        CancellationToken ct = default);
+    int ticketId,
+    string agentId,
+    int tenantId,
+    CancellationToken ct = default);
 
     Task<TicketResponse> ChangeStatusAsync(
         int ticketId,

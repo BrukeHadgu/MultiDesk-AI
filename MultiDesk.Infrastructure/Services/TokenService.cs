@@ -14,6 +14,7 @@ public class TokenService(IConfiguration config)
     var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id),
+            new Claim("tenantUserId", user.TenantUserId),
             new Claim(ClaimTypes.Email,          user.Email ?? string.Empty),
             new Claim("FirstName",               user.FirstName),
             new Claim("LastName",                user.LastName),

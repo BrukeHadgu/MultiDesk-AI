@@ -53,14 +53,19 @@ public class MessageService(
         int ticketId,
         CreateMessageRequest request,
         string senderId,
+        string senderRole,
         int tenantId,
         CancellationToken ct = default)
     {
-        var ticketExists = await context.Tickets
-            .AnyAsync(t => t.Id == ticketId && t.TenantId == tenantId, ct);
+        var ticket = await context.Tickets
+        .FirstOrDefaultAsync(t => t.Id == ticketId
+                               && t.TenantId == tenantId, ct)
+        ?? throw new KeyNotFoundException($"Ticket {ticketId} not found.");
 
-        if (!ticketExists)
-            throw new KeyNotFoundException($"Ticket {ticketId} not found.");
+        // Students can only message their own tickets
+        if (senderRole == "Student" && ticket.StudentId != senderId)
+            throw new UnauthorizedAccessException(
+                "You can only add messages to your own tickets.");
 
         var message = new Message
         {
@@ -75,7 +80,6 @@ public class MessageService(
         context.Messages.Add(message);
 
         // Update ticket UpdatedAt
-        var ticket = await context.Tickets.FindAsync(ticketId, ct);
         if (ticket is not null)
             ticket.UpdatedAt = DateTime.UtcNow;
 

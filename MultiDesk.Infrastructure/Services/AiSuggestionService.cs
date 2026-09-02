@@ -94,6 +94,7 @@ public class AiSuggestionService(
             suggestion.TicketId,
             new CreateMessageRequest { Content = suggestion.SuggestedText },
             agentId,
+            "Agent",
             tenantId,
             ct);
 

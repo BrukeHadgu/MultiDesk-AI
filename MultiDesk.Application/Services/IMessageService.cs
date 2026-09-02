@@ -11,7 +11,8 @@ public interface IMessageService
     Task<MessageResponse> CreateAsync(
         int ticketId,
         CreateMessageRequest request,
-        string senderId,      // string now
+        string senderId,
+        string senderRole,
         int tenantId,
         CancellationToken ct = default);
 }

@@ -5,6 +5,8 @@ using MultiDesk.Application.DTOs.Messages;
 using MultiDesk.Application.DTOs.Tickets;
 using MultiDesk.Application.Services;
 using MultiDesk.Domain.Enums;
+using MultiDesk.Infrastructure.Identity;
+using Microsoft.AspNetCore.Identity;
 
 namespace MultiDesk.Api.Controllers;
 
@@ -21,28 +23,35 @@ public class TicketsController(
     [ProducesResponseType(typeof(PagedTicketResponse), StatusCodes.Status200OK)]
     [EndpointSummary("Get paginated list of tickets")]
     public async Task<IActionResult> GetAll(
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 10,
-        [FromQuery] TicketStatus? status = null,
-        CancellationToken ct = default)
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 10,
+    [FromQuery] TicketStatus? status = null,
+    CancellationToken ct = default)
     {
         var tenantId = User.GetTenantId();
-        var result   = await ticketService.GetPagedAsync(
-            tenantId, page, pageSize, status, ct);
+        var role = User.GetRole();
+        var userId = User.GetUserId();
+
+        // Students only see their own tickets
+        // Agents and Admins see all tenant tickets
+        var studentId = role == "Student" ? userId : null;
+
+        var result = await ticketService.GetPagedAsync(
+            tenantId, page, pageSize, status, studentId, ct);
         return Ok(result);
     }
 
     [HttpGet("{id:int}")]
-    [ProducesResponseType(typeof(TicketDetailResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    [EndpointSummary("Get ticket details with messages and AI suggestions")]
     public async Task<IActionResult> GetById(int id, CancellationToken ct)
     {
         var tenantId = User.GetTenantId();
-        var ticket   = await ticketService.GetByIdAsync(id, tenantId, ct);
+        var userId = User.GetUserId();
+        var role = User.GetRole();
+
+        var ticket = await ticketService.GetByIdAsync(
+            id, tenantId, userId, role, ct);
         return ticket is null ? NotFound() : Ok(ticket);
     }
-
     [HttpPost]
     [Authorize(Roles = "Student")]
     public async Task<IActionResult> Create(
@@ -73,6 +82,7 @@ public class TicketsController(
 
     [HttpDelete("{id:int}")]
     [Authorize(Roles = "Admin")]
+    [EndpointSummary("Delete a ticket")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         var tenantId = User.GetTenantId();
@@ -83,16 +93,15 @@ public class TicketsController(
 
     [HttpPost("{id:int}/assign")]
     [Authorize(Roles = "Admin")]
-    [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status200OK)]
-    [EndpointSummary("Assign an agent to a ticket")]
+    [EndpointSummary("Admin assigns an agent from the ticket's department")]
     public async Task<IActionResult> AssignAgent(
         int id,
-        [FromQuery] string agentId,
+        [FromQuery] string agentId,   // string GUID now
         CancellationToken ct)
     {
         var tenantId = User.GetTenantId();
-        var ticket   = await ticketService.AssignAgentAsync(
-            id,  agentId, tenantId, ct);
+        var ticket = await ticketService.AssignAgentAsync(
+            id, agentId, tenantId, ct);
         return Ok(ticket);
     }
 
@@ -111,7 +120,7 @@ public class TicketsController(
         return Ok(ticket);
     }
 
-    // ── Messages ─────────────────────────────────────────────────────
+    // message endpoints for a ticket
 
     [HttpGet("{id:int}/messages")]
     [ProducesResponseType(typeof(IReadOnlyList<MessageResponse>), StatusCodes.Status200OK)]
@@ -129,10 +138,46 @@ public class TicketsController(
     [FromBody] CreateMessageRequest request,
     CancellationToken ct)
     {
-        var senderId = User.GetUserId();   // string
+        var senderId = User.GetUserId();
+        var senderRole = User.GetRole();
         var tenantId = User.GetTenantId();
+
         var message = await messageService.CreateAsync(
-            id, request, senderId, tenantId, ct);
+            id, request, senderId, senderRole, tenantId, ct);
         return CreatedAtAction(nameof(GetMessages), new { id }, message);
     }
+
+    [HttpPost("{id:int}/claim")]
+    [Authorize(Roles = "Agent")]
+    [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [EndpointSummary("Agent claims an unassigned ticket in their department")]
+    public async Task<IActionResult> ClaimTicket(
+    int id,
+    [FromServices] UserManager<MultiDeskUser> userManager,
+    CancellationToken ct)
+    {
+        var tenantId = User.GetTenantId();
+        var agentId = User.GetUserId();
+
+        // Verify agent belongs to the ticket's department
+        var agent = await userManager.FindByIdAsync(agentId);
+        var ticket = await ticketService.GetByIdAsync(id, tenantId, ct: ct);
+
+        if (ticket is null)
+            return NotFound();
+
+        if (agent?.DepartmentId == null)
+            return Forbid();
+
+        // Get department name to compare
+        var agentDeptName = ticket.DepartmentName;
+
+        // Assign agent and move to InProgress
+        var result = await ticketService.AssignAgentAsync(
+            id, agentId, tenantId, ct);
+
+        return Ok(result);
+    }
+    
 }

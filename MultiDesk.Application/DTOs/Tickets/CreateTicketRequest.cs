@@ -19,8 +19,6 @@ public record CreateTicketRequest
     [Required]
     public int CategoryId { get; init; }
 
-    public TicketPriority Priority { get; init; } = TicketPriority.Medium;
-
     // Optional file attachment path — stored locally in V1
     public string? AttachmentPath { get; init; }
 }

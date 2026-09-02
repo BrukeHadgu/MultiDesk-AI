@@ -14,11 +14,15 @@ using MultiDesk.Infrastructure.Persistence;
 using MultiDesk.Infrastructure.Persistence.Repositories;
 using MultiDesk.Infrastructure.Services;
 using Scalar.AspNetCore;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // controllers, swagger, and OpenAPI
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+        options.JsonSerializerOptions.Converters.Add(
+            new JsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
 
@@ -36,7 +40,7 @@ builder.Services.AddIdentityCore<MultiDeskUser>(options =>
     options.Password.RequireDigit = true;
     options.Password.RequireNonAlphanumeric = true;
 
-    // Brute-Force Lockout Protection
+    // brute force lockout protection
     options.Lockout.MaxFailedAccessAttempts = 5;
     options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
     options.Lockout.AllowedForNewUsers = true;
@@ -87,6 +91,9 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IMessageService, MessageService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<IAiSuggestionService, AiSuggestionService>();
+
+builder.Services.AddScoped<ITenantService, TenantService>();
+builder.Services.AddScoped<TenantUserIdGenerator>();
 
 // seeder
 builder.Services.AddScoped<MultiDeskSeeder>();

@@ -5,6 +5,7 @@ using MultiDesk.Application.Services;
 using MultiDesk.Domain.Entities;
 using MultiDesk.Infrastructure.Identity;
 using MultiDesk.Infrastructure.Persistence;
+using MultiDesk.Domain.Enums;
 
 namespace MultiDesk.Infrastructure.Services;
 
@@ -31,7 +32,7 @@ public class DepartmentService(
             d.Description,
             d.IsActive,
             agentsInRole.Count(a => a.TenantId == tenantId
-                                 && a.Department == d.Name
+                                 && a.DepartmentId == d.Id
                                  && a.IsActive),
             d.Tickets.Count(t => t.Status == Domain.Enums.TicketStatus.Open)))
         .ToList();
@@ -50,9 +51,8 @@ public class DepartmentService(
         if (d is null) return null;
 
         var agentsInRole = await userManager.GetUsersInRoleAsync("Agent");
-        var agentCount = agentsInRole.Count(a => a.TenantId == tenantId
-                                                 && a.Department == d.Name
-                                                 && a.IsActive);
+        var agentCount = agentsInRole.Count
+        (a => a.TenantId == tenantId && a.DepartmentId == d.Id && a.IsActive);
 
         return new DepartmentResponse(
             d.Id,
@@ -84,20 +84,69 @@ public class DepartmentService(
     }
 
     public async Task<IReadOnlyList<CategoryResponse>> GetCategoriesAsync(
-        int departmentId, int tenantId,
-        CancellationToken ct = default) =>
-        await context.Categories
+    int departmentId,
+    int tenantId,
+    CancellationToken ct = default)
+    {
+        var categories = await context.Categories
             .AsNoTracking()
-            .Where(c => c.DepartmentId == departmentId
-                     && c.TenantId == tenantId
-                     && c.IsActive)
-            .Select(c => new CategoryResponse(
-                c.Id,
-                c.Name,
-                c.Description,
-                c.IsActive,
-                c.DepartmentId,
-                c.Department.Name))
-            .OrderBy(c => c.Name)
+            .Include(category => category.Department)
+            .Where(category =>
+                category.DepartmentId == departmentId &&
+                category.TenantId == tenantId &&
+                category.IsActive)
+            .OrderBy(category => category.Name)
             .ToListAsync(ct);
+
+        return categories
+            .Select(category => new CategoryResponse(
+                category.Id,
+                category.Name,
+                category.Description,
+                category.IsActive,
+                category.DepartmentId,
+                category.Department.Name,
+                category.DefaultPriority.ToString()))
+            .ToList();
+    }
+
+    public async Task<CategoryResponse> CreateCategoryAsync(
+        int departmentId, CreateCategoryRequest request,
+        int tenantId, CancellationToken ct = default)
+    {
+        var dept = await context.Departments
+            .FirstOrDefaultAsync(d => d.Id == departmentId
+                                   && d.TenantId == tenantId, ct)
+            ?? throw new KeyNotFoundException(
+                $"Department {departmentId} not found.");
+
+        // Parse the priority string to enum
+        if (!Enum.TryParse<TicketPriority>(
+            request.DefaultPriority, out var priority))
+            priority = TicketPriority.Medium;
+
+        var category = new Category
+        {
+            Name = request.Name,
+            Description = request.Description,
+            DepartmentId = departmentId,
+            TenantId = tenantId,
+            IsActive = true,
+            DefaultPriority = priority,   // ADD
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        context.Categories.Add(category);
+        await context.SaveChangesAsync(ct);
+
+        return new CategoryResponse(
+            category.Id,
+            category.Name,
+            category.Description,
+            category.IsActive,
+            departmentId,
+            dept.Name,
+            category.DefaultPriority.ToString());  // ADD
+    }
 }
